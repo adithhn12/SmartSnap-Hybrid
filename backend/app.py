@@ -124,6 +124,8 @@ def simulate(req: SimulationRequest):
     try:
         res = service.simulate_fuzzy(req.inputs, category=req.category)
         return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Simulation error: {str(e)}")
 

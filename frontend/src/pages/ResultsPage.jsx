@@ -21,6 +21,7 @@ const technicalLabels = {
   contrast: 'Image contrast',
   noise: 'Image grain',
   face_visibility: 'Face detection / visibility',
+  object_visibility: 'Primary object visibility',
   composition: 'Framing',
 };
 
@@ -110,7 +111,13 @@ export default function ResultsPage({ record, onNavigate }) {
   const recommendationClass = recommendationPresentation.className;
   const technicalFeatureEntries = Object.entries(features).filter(([, item]) => item && typeof item === 'object');
   const faceData = features.face_visibility ?? {};
-  const faceAssessmentAvailable = ['portrait', 'group photograph'].includes(category.toLowerCase());
+  const faceAssessmentAvailable = category.toLowerCase() === 'portrait photography';
+  const categoryAssessment = {
+    'Portrait Photography': 'Individual face detail, face exposure and visibility, subject/background focus, and portrait framing are emphasized.',
+    'Item Photography': 'Primary-object detail, visibility, exposure and framing are emphasized; background softness is separated and face analysis is not used.',
+    'Landscape Photography': 'Regional scene sharpness, exposure balance, and landscape composition are emphasized.',
+    'General Photography': 'Overall image focus, lighting, contrast, noise, and composition are assessed.',
+  }[category];
   const activatedRules = fuzzy.activated_rules ?? [];
   const fuzzyMemberships = fuzzy.memberships ?? {};
   const fuzzyInputs = fuzzy.input_values ?? {};
@@ -155,6 +162,7 @@ export default function ResultsPage({ record, onNavigate }) {
             <Sparkles size={16} aria-hidden="true" />
             <span>Overall photo quality</span>
           </div>
+          {categoryAssessment && <p className="results-category-explanation">{categoryAssessment}</p>}
           {timestamp && <div className="results-file-caption">{filename} <span>·</span> {timestamp}</div>}
         </div>
 

@@ -17,8 +17,8 @@ test('all recommendations have clear consumer-facing copy and stable status clas
   }
 });
 
-test('metric summaries cover all five image categories without mislabeling face analysis', () => {
-  const categories = ['Portrait', 'Group Photograph', 'Landscape', 'Document', 'General Photography'];
+test('metric summaries are category-aware across the four photography categories', () => {
+  const categories = ['Portrait Photography', 'Item Photography', 'Landscape Photography', 'General Photography'];
   const features = {
     blur: { value: 8, focus_discrepancy: false },
     brightness: { value: 52 },
@@ -29,6 +29,11 @@ test('metric summaries cover all five image categories without mislabeling face 
       face_count: 1,
       applicable_to_quality: true,
     },
+    object_visibility: {
+      value: 85,
+      object_detected: true,
+      applicable_to_quality: true,
+    },
     composition: { value: 80, subject_type: 'Visual Saliency Centroid' },
   };
   const memberships = {
@@ -37,28 +42,34 @@ test('metric summaries cover all five image categories without mislabeling face 
     contrast: { Low: 0, Medium: 1, High: 0 },
     noise: { Low: 1, Medium: 0, High: 0 },
     face_visibility: { Poor: 0, Acceptable: 0, Clear: 1 },
+    object_visibility: { Poor: 0, Acceptable: 0, Clear: 1 },
     composition: { Poor: 0, Average: 0, Good: 1 },
   };
 
   for (const category of categories) {
     const metrics = buildMetricPresentations(features, memberships, category);
-    assert.equal(metrics.length, 6);
+    assert.equal(
+      metrics.length,
+      ['Portrait Photography', 'Item Photography'].includes(category) ? 6 : 5,
+    );
     const face = metrics.find((metric) => metric.key === 'face_visibility');
-    const humanCategory = ['Portrait', 'Group Photograph'].includes(category);
-    assert.equal(face.notAssessed, !humanCategory);
-    assert.match(face.explanation, humanCategory ? /1 face detected/ : /not used for/);
+    assert.equal(Boolean(face), category === 'Portrait Photography');
+    if (face) assert.match(face.explanation, /1 face detected/);
+    const object = metrics.find((metric) => metric.key === 'object_visibility');
+    assert.equal(Boolean(object), category === 'Item Photography');
     assert.ok(metrics.every((metric) => metric.status && metric.explanation));
   }
 });
 
 test('all recommendation states retain their presentation across every category', () => {
-  const categories = ['Portrait', 'Group Photograph', 'Landscape', 'Document', 'General Photography'];
+  const categories = ['Portrait Photography', 'Item Photography', 'Landscape Photography', 'General Photography'];
   const features = {
     blur: { value: 8, focus_discrepancy: false },
     brightness: { value: 52 },
     contrast: { value: 50 },
     noise: { value: 8 },
     face_visibility: { value: 85, face_count: 1, applicable_to_quality: true },
+    object_visibility: { value: 85, object_detected: true, applicable_to_quality: true },
     composition: { value: 80, subject_type: 'Visual Saliency Centroid' },
   };
   const memberships = {
@@ -67,6 +78,7 @@ test('all recommendation states retain their presentation across every category'
     contrast: { Low: 0, Medium: 1, High: 0 },
     noise: { Low: 1, Medium: 0, High: 0 },
     face_visibility: { Poor: 0, Acceptable: 0, Clear: 1 },
+    object_visibility: { Poor: 0, Acceptable: 0, Clear: 1 },
     composition: { Poor: 0, Average: 0, Good: 1 },
   };
   for (const category of categories) {
@@ -76,9 +88,14 @@ test('all recommendation states retain their presentation across every category'
       assert.ok(presentation.description);
       assert.ok(['keep', 'recover', 'retake'].includes(presentation.className));
       const metrics = buildMetricPresentations(features, memberships, category);
-      assert.equal(metrics.length, 6);
-      assert.equal(metrics.find((metric) => metric.key === 'face_visibility').notAssessed,
-        !['Portrait', 'Group Photograph'].includes(category));
+      assert.equal(
+        metrics.length,
+        ['Portrait Photography', 'Item Photography'].includes(category) ? 6 : 5,
+      );
+      assert.equal(Boolean(metrics.find((metric) => metric.key === 'face_visibility')),
+        category === 'Portrait Photography');
+      assert.equal(Boolean(metrics.find((metric) => metric.key === 'object_visibility')),
+        category === 'Item Photography');
       assert.ok(Array.isArray(buildPersonalizedFeedback(metrics, recommendation)));
     }
   }
@@ -101,7 +118,7 @@ test('personalized feedback reflects blur, underexposure, and grain measurements
       noise: { Low: 0, Medium: 0, High: 1 },
       composition: { Poor: 0, Average: 1, Good: 0 },
     },
-    'Landscape',
+    'Landscape Photography',
   );
   const feedback = buildPersonalizedFeedback(metrics);
   assert.deepEqual(feedback.map((item) => item.title), [
@@ -125,7 +142,13 @@ test('saved results without fuzzy memberships use their existing CV descriptions
       applicable_to_quality: false,
       description: 'Not assessed',
     },
-  }, {}, 'Landscape');
+    object_visibility: {
+      value: 50,
+      object_detected: false,
+      applicable_to_quality: false,
+      description: 'Object visibility not assessed',
+    },
+  }, {}, 'Item Photography');
   const byKey = Object.fromEntries(metrics.map((metric) => [metric.key, metric]));
   assert.equal(byKey.blur.status, 'Poor');
   assert.match(byKey.blur.explanation, /Significant blur/);
@@ -135,7 +158,8 @@ test('saved results without fuzzy memberships use their existing CV descriptions
   assert.match(byKey.contrast.explanation, /strongly separated/);
   assert.equal(byKey.noise.status, 'Poor');
   assert.equal(byKey.composition.status, 'Poor');
-  assert.equal(byKey.face_visibility.status, 'Not assessed');
+  assert.equal(byKey.object_visibility.status, 'Not assessed');
+  assert.match(byKey.object_visibility.explanation, /left neutral/i);
 });
 
 test('strong image results receive positive feedback rather than fabricated issues', () => {
@@ -155,7 +179,7 @@ test('strong image results receive positive feedback rather than fabricated issu
       noise: { Low: 1, Medium: 0, High: 0 },
       composition: { Poor: 0, Average: 0, Good: 1 },
     },
-    'Landscape',
+    'Landscape Photography',
   );
   const feedback = buildPersonalizedFeedback(metrics);
   assert.ok(feedback.length > 0);

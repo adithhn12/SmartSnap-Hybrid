@@ -6,6 +6,11 @@ applies critical quality safeguards, and generates mathematical explanations.
 
 from typing import Dict, Any, List
 
+if "." in __package__:
+    from ..categories import category_key
+else:
+    from categories import category_key
+
 
 class DecisionEngine:
     """
@@ -25,7 +30,7 @@ class DecisionEngine:
         inputs = fuzzy_result["input_values"]
         memberships = fuzzy_result["memberships"]
         category = fuzzy_result.get("category", "General Photography")
-        category_key = category.casefold()
+        category_type = category_key(category)
         activated_rules = fuzzy_result.get("activated_rules", [])
 
         # 1. Base fuzzy recommendation
@@ -69,7 +74,7 @@ class DecisionEngine:
                     final_recommendation = "RECOVER"
 
             # Critical Portrait Face requirement
-            if category_key in {"portrait", "group photograph"} and face_val < 30.0:
+            if category_type == "portrait" and face_val < 30.0:
                 critical_flags.append(f"Selected category '{category}' requires clear facial visibility, but face detection score is only {face_val:.1f}/100.")
                 if final_recommendation == "KEEP":
                     final_recommendation = "RECOVER"
@@ -104,9 +109,19 @@ class DecisionEngine:
             corrections.append("Lower ISO setting, use longer exposure on tripod, or apply bilateral / non-local means denoising.")
 
         face_mems = memberships.get("face_visibility", {})
-        if category_key in {"portrait", "group photograph"} and face_mems.get("Poor", 0) > 0.35:
+        if category_type == "portrait" and face_mems.get("Poor", 0) > 0.35:
             problems.append(f"Face features not clearly distinguished (Poor face membership: {face_mems.get('Poor', 0):.2f}).")
             corrections.append("Ask subject to face the primary light source and ensure focus point locks on eye/face.")
+
+        object_mems = memberships.get("object_visibility", {})
+        if category_type == "item" and object_mems.get("Poor", 0) > 0.35:
+            problems.append(
+                f"The primary object is not clearly visible or framed "
+                f"(Poor visibility membership: {object_mems.get('Poor', 0):.2f})."
+            )
+            corrections.append(
+                "Separate the item from nearby clutter and leave safe space around its edges."
+            )
 
         comp_mems = memberships.get("composition", {})
         if comp_mems.get("Poor", 0) > 0.35:
@@ -166,7 +181,9 @@ class DecisionEngine:
             if "contrast" in inputs:
                 hybrid_evidence.append("contrast")
             if "face_visibility" in inputs:
-                hybrid_evidence.append("category-relevant face visibility")
+                hybrid_evidence.append("portrait face visibility")
+            if "object_visibility" in inputs:
+                hybrid_evidence.append("primary-item visibility")
             explanation_parts.insert(
                 0,
                 f"Hybrid input: Random Forest predicted MOS {predicted_mos:.2f}/5; "

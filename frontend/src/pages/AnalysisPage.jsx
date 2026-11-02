@@ -10,11 +10,26 @@ import {
 import { analyzePhoto } from '../services/api';
 
 const CATEGORIES = [
-  { id: 'General Photography', label: 'General Photography' },
-  { id: 'Portrait', label: 'Portrait' },
-  { id: 'Group Photograph', label: 'Group Photograph' },
-  { id: 'Landscape', label: 'Landscape' },
-  { id: 'Document', label: 'Document' },
+  {
+    id: 'Portrait Photography',
+    label: 'Portrait Photography',
+    description: 'Face-region sharpness, visibility, exposure, and portrait framing; background blur is assessed separately.',
+  },
+  {
+    id: 'Item Photography',
+    label: 'Item Photography',
+    description: 'Primary-object detail, visibility, exposure, and framing; background softness is separated and faces are not analyzed.',
+  },
+  {
+    id: 'Landscape Photography',
+    label: 'Landscape Photography',
+    description: 'Regional sharpness, exposure balance, scene contrast, and composition.',
+  },
+  {
+    id: 'General Photography',
+    label: 'General Photography',
+    description: 'Overall focus, lighting, contrast, noise, and composition.',
+  },
 ];
 
 export default function AnalysisPage({ onAnalysisComplete }) {
@@ -121,7 +136,7 @@ export default function AnalysisPage({ onAnalysisComplete }) {
           Photograph Upload & Analysis
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          A Random Forest estimates perceptual MOS from image pixels; Mamdani fuzzy inference combines that estimate with independent face and composition context.
+          A Random Forest estimates perceptual MOS from image pixels; Mamdani fuzzy inference combines that estimate with category-relevant OpenCV measurements.
         </p>
       </div>
 
@@ -291,7 +306,8 @@ export default function AnalysisPage({ onAnalysisComplete }) {
                         style={{ accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
                       />
                       <span className="category-option-label">
-                        {cat.label}
+                        <strong>{cat.label}</strong>
+                        <small>{cat.description}</small>
                       </span>
                     </label>
                   );

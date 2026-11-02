@@ -11,11 +11,17 @@ from typing import Dict, Any, List, Optional
 import cv2
 import numpy as np
 
+if "." in __package__:
+    from ..categories import category_key
+else:
+    from categories import category_key
+
 
 def estimate_brightness(
     image_bgr: np.ndarray,
     faces: Optional[List[Dict[str, int]]] = None,
     category: str = "General Photography",
+    subject_regions: Optional[List[Dict[str, int]]] = None,
 ) -> Dict[str, Any]:
     """
     Computes exposure metrics with subject-versus-background discrimination.
@@ -37,16 +43,28 @@ def estimate_brightness(
     subject_luminance: Optional[float] = None
     background_luminance: Optional[float] = None
 
-    if category.casefold() in {"portrait", "group photograph"} and faces:
-        h, w = gray.shape[:2]
-        face_mask = np.zeros((h, w), dtype=np.uint8)
-        for f in faces:
-            fx, fy, fw, fh = f.get("x", 0), f.get("y", 0), f.get("w", 0), f.get("h", 0)
-            face_mask[max(0, fy):min(h, fy + fh), max(0, fx):min(w, fx + fw)] = 255
+    category_type = category_key(category)
+    if category_type == "portrait":
+        regions = faces or []
+    elif category_type == "item":
+        regions = subject_regions or []
+    else:
+        regions = []
 
-        if np.sum(face_mask) > 100:
-            subject_luminance = float(np.mean(gray[face_mask == 255]))
-            bg_pixels = gray[face_mask == 0]
+    if regions:
+        h, w = gray.shape[:2]
+        subject_mask = np.zeros((h, w), dtype=np.uint8)
+        for region in regions:
+            x, y = region.get("x", 0), region.get("y", 0)
+            region_width, region_height = region.get("w", 0), region.get("h", 0)
+            subject_mask[
+                max(0, y):min(h, y + region_height),
+                max(0, x):min(w, x + region_width),
+            ] = 255
+
+        if np.sum(subject_mask) > 100:
+            subject_luminance = float(np.mean(gray[subject_mask == 255]))
+            bg_pixels = gray[subject_mask == 0]
             if bg_pixels.size > 0:
                 background_luminance = float(np.mean(bg_pixels))
 

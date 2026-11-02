@@ -126,7 +126,7 @@ def test_scenario_7_clear_portrait(fuzzy_engine, decision_engine):
         "face_visibility": 92.0,
         "composition": 85.0,
     }
-    result = fuzzy_engine.compute(inputs, category="Portrait")
+    result = fuzzy_engine.compute(inputs, category="Portrait Photography")
     decision = decision_engine.evaluate(result)
 
     assert result["defuzzified_score"] >= 75.0
@@ -142,7 +142,7 @@ def test_scenario_8_blurry_portrait(fuzzy_engine, decision_engine):
         "face_visibility": 20.0,
         "composition": 60.0,
     }
-    result = fuzzy_engine.compute(inputs, category="Portrait")
+    result = fuzzy_engine.compute(inputs, category="Portrait Photography")
     decision = decision_engine.evaluate(result)
 
     assert result["defuzzified_score"] < 40.0
@@ -159,7 +159,7 @@ def test_scenario_9_good_landscape_without_face(fuzzy_engine, decision_engine):
         "face_visibility": 0.0,
         "composition": 88.0,
     }
-    result = fuzzy_engine.compute(inputs, category="Landscape")
+    result = fuzzy_engine.compute(inputs, category="Landscape Photography")
     decision = decision_engine.evaluate(result)
 
     assert result["defuzzified_score"] >= 75.0
@@ -168,16 +168,16 @@ def test_scenario_9_good_landscape_without_face(fuzzy_engine, decision_engine):
     assert not any("face" in flag.lower() for flag in decision["critical_flags"])
 
 
-def test_scenario_10_good_document_photograph(fuzzy_engine, decision_engine):
+def test_scenario_10_good_item_photo(fuzzy_engine, decision_engine):
     inputs = {
         "blur": 8.0,
         "brightness": 55.0,
         "contrast": 90.0,
         "noise": 10.0,
-        "face_visibility": 0.0,
+        "object_visibility": 90.0,
         "composition": 70.0,
     }
-    result = fuzzy_engine.compute(inputs, category="Document")
+    result = fuzzy_engine.compute(inputs, category="Item Photography")
     decision = decision_engine.evaluate(result)
 
     assert result["defuzzified_score"] >= 75.0
@@ -290,7 +290,12 @@ def test_no_dead_zones_in_rule_base(fuzzy_engine):
     import numpy as np
     np.random.seed(42)
     sample_points = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    categories = ["General Photography", "Portrait", "Landscape", "Document"]
+    categories = [
+        "Portrait Photography",
+        "Item Photography",
+        "Landscape Photography",
+        "General Photography",
+    ]
     dead_zones = []
 
     for cat in categories:
@@ -331,4 +336,3 @@ def test_scenario_1_excellent_photograph_keep_threshold_70(fuzzy_engine, decisio
     assert len(result["activated_rules"]) > 0
     # Verify KEEP threshold is 70
     assert decision["thresholds"]["keep"] == 70.0
-

@@ -22,9 +22,11 @@ if "." in __package__:
         estimate_noise,
         estimate_face_visibility,
         estimate_composition,
+        estimate_item_subject,
     )
     from ..fuzzy import MamdaniInferenceEngine, DecisionEngine
     from ..ml.predictor import DEFAULT_MODEL_PATH, RandomForestPredictor
+    from ..categories import category_key, normalize_category
 else:
     from image_processing import (
         estimate_blur,
@@ -33,9 +35,11 @@ else:
         estimate_noise,
         estimate_face_visibility,
         estimate_composition,
+        estimate_item_subject,
     )
     from fuzzy import MamdaniInferenceEngine, DecisionEngine
     from ml.predictor import DEFAULT_MODEL_PATH, RandomForestPredictor
+    from categories import category_key, normalize_category
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "history.json")
@@ -85,6 +89,9 @@ class AnalysisService:
         """
         Processes uploaded image file through OpenCV feature extraction and Mamdani fuzzy inference.
         """
+        category = normalize_category(category)
+        category_type = category_key(category)
+
         # Decode image from buffer
         nparr = np.frombuffer(file_bytes, np.uint8)
         img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -99,7 +106,7 @@ class AnalysisService:
 
         # RF features remain whole-image statistics, matching MOS training.
         # Run face detection only when the selected category needs face evidence.
-        face_applicable = category.casefold() in {"portrait", "group photograph"}
+        face_applicable = category_type == "portrait"
         if face_applicable:
             face_res = estimate_face_visibility(img_bgr)
         else:
@@ -111,13 +118,33 @@ class AnalysisService:
                 "confidence": 0.0,
                 "method": "Not evaluated for this category",
                 "description": "Not assessed for non-human-focused categories",
+                "explanation": f"Face detection is not used for {category}.",
+            }
+        item_applicable = category_type == "item"
+        item_res = (
+            estimate_item_subject(img_bgr)
+            if item_applicable
+            else {
+                "object_visibility": 50.0,
+                "object_count": 0,
+                "object_detected": False,
+                "object_box": None,
+                "object_area_pct": None,
+                "confidence": 0.0,
+                "method": "Not assessed for this category",
+                "description": "Object visibility not assessed",
                 "explanation": (
-                    f"Face detection is disabled for {category}; choose Portrait or "
-                    "Group Photograph to assess face visibility."
+                    f"Primary-object assessment is not used for {category}."
                 ),
             }
+        )
         detected_faces = face_res.get("faces", [])
         quality_faces = detected_faces if face_applicable else []
+        subject_regions = (
+            [item_res["object_box"]]
+            if item_applicable and item_res["object_box"] is not None
+            else []
+        )
         prediction = self.predictor.predict_image(img_bgr)
         predicted_mos = float(prediction["predicted_mos"])
 
@@ -134,9 +161,17 @@ class AnalysisService:
         # 1. Category-aware Computer Vision diagnostics
         h, w = img_bgr.shape[:2]
 
-        blur_res = estimate_blur(img_bgr, faces=quality_faces, category=category)
+        blur_res = estimate_blur(
+            img_bgr,
+            faces=quality_faces,
+            category=category,
+            subject_regions=subject_regions,
+        )
         bright_res = estimate_brightness(
-            img_bgr, faces=quality_faces, category=category
+            img_bgr,
+            faces=quality_faces,
+            category=category,
+            subject_regions=subject_regions,
         )
         contrast_res = estimate_contrast(img_bgr)
         noise_res = estimate_noise(img_bgr)
@@ -144,6 +179,7 @@ class AnalysisService:
             img_bgr,
             faces=quality_faces,
             category=category,
+            subject_regions=subject_regions,
         )
 
         # Keep MOS as the learned perceptual prior. Blur is supplied separately as
@@ -159,6 +195,8 @@ class AnalysisService:
         }
         if face_applicable:
             fuzzy_inputs["face_visibility"] = face_res["face_visibility"]
+        if item_applicable:
+            fuzzy_inputs["object_visibility"] = item_res["object_visibility"]
 
         # Existing CV-only rules remain available to the simulation/playground.
         fuzzy_result = self.fuzzy_engine.compute(
@@ -175,6 +213,8 @@ class AnalysisService:
         diagnostics = {
             "global_sharpness": blur_res.get("global_sharpness"),
             "face_sharpness": blur_res.get("face_sharpness"),
+            "face_sharpnesses": blur_res.get("face_sharpnesses"),
+            "object_sharpness": blur_res.get("object_sharpness"),
             "background_sharpness": blur_res.get("background_sharpness"),
             "focus_discrepancy": blur_res.get("focus_discrepancy"),
             "motion_coherence": blur_res.get("motion_coherence"),
@@ -199,6 +239,8 @@ class AnalysisService:
                 "sharpness": blur_res["sharpness"],
                 "global_sharpness": blur_res.get("global_sharpness"),
                 "face_sharpness": blur_res.get("face_sharpness"),
+                "face_sharpnesses": blur_res.get("face_sharpnesses"),
+                "object_sharpness": blur_res.get("object_sharpness"),
                 "background_sharpness": blur_res.get("background_sharpness"),
                 "motion_coherence": blur_res.get("motion_coherence"),
                 "focus_discrepancy": blur_res.get("focus_discrepancy"),
@@ -207,10 +249,20 @@ class AnalysisService:
                 "var_subject": blur_res.get("var_subject"),
                 "var_bg": blur_res.get("var_bg"),
                 "raw_stat": (
-                    (f"Subject: {blur_res['face_sharpness']:.1f}%, " if blur_res.get("face_sharpness") is not None else "")
-                    + f"Global: {blur_res.get('global_sharpness', 0):.1f}%, BG: {blur_res.get('background_sharpness', 0):.1f}%"
-                    + (" [Missed Focus!]" if blur_res.get("focus_discrepancy") else "")
-                ),
+                    (
+                        f"{'Face' if face_applicable else 'Object'}: "
+                        f"{blur_res.get('face_sharpness') if face_applicable else blur_res.get('object_sharpness'):.1f}%, "
+                    )
+                    if (
+                        face_applicable and blur_res.get("face_sharpness") is not None
+                    )
+                    or (
+                        item_applicable and blur_res.get("object_sharpness") is not None
+                    )
+                    else ""
+                )
+                + f"Global: {blur_res.get('global_sharpness', 0):.1f}%, BG: {blur_res.get('background_sharpness', 0):.1f}%"
+                + (" [Subject focus discrepancy]" if blur_res.get("focus_discrepancy") else ""),
                 "description": blur_res["description"],
                 "explanation": blur_res["explanation"],
             },
@@ -264,6 +316,24 @@ class AnalysisService:
                 "description": face_res["description"],
                 "explanation": face_res["explanation"],
             },
+            "object_visibility": {
+                "fuzzy_input_name": "Primary Object Visibility",
+                "value": item_res["object_visibility"],
+                "object_count": item_res["object_count"],
+                "object_detected": item_res["object_detected"],
+                "object_box": item_res["object_box"],
+                "object_area_pct": item_res["object_area_pct"],
+                "confidence": item_res["confidence"],
+                "applicable_to_quality": item_applicable,
+                "raw_stat": (
+                    f"Primary object proposal: {item_res['object_area_pct']:.1f}% of frame"
+                    if item_applicable and item_res["object_area_pct"] is not None
+                    else f"Not assessed ({category})"
+                ),
+                "method": item_res["method"],
+                "description": item_res["description"],
+                "explanation": item_res["explanation"],
+            },
             "composition": {
                 "fuzzy_input_name": "Composition",
                 "value": comp_res["composition"],
@@ -311,6 +381,7 @@ class AnalysisService:
         """
         Runs the exact same Mamdani Fuzzy Inference Engine for the simulation playground.
         """
+        category = normalize_category(category)
         fuzzy_result = self.fuzzy_engine.compute(inputs, category=category)
         decision_result = self.decision_engine.evaluate(fuzzy_result)
         return {

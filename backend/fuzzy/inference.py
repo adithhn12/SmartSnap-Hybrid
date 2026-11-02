@@ -15,6 +15,11 @@ import skfuzzy as fuzz
 from .membership import create_fuzzy_system_variables, FuzzyVariable
 from .rules import build_default_rule_base, build_hybrid_rule_base, FuzzyRule
 
+if "." in __package__:
+    from ..categories import category_key, normalize_category
+else:
+    from categories import category_key, normalize_category
+
 
 class MamdaniInferenceEngine:
     """
@@ -41,7 +46,7 @@ class MamdaniInferenceEngine:
         Parameters:
             inputs: e.g. {'blur': 25.0, 'brightness': 55.0, 'contrast': 70.0,
                           'noise': 15.0, 'face_visibility': 85.0, 'composition': 80.0}
-            category: 'Portrait', 'Landscape', 'Document', 'Group Photograph', 'General Photography'
+            category: one of the four canonical photography categories
 
         Returns:
             Dictionary containing input fuzzification, activated rules, aggregated curve,
@@ -49,21 +54,25 @@ class MamdaniInferenceEngine:
         """
         if pipeline not in {"legacy", "hybrid"}:
             raise ValueError(f"Unknown fuzzy inference pipeline: {pipeline}")
-        human_focused_category = category.casefold() in {
-            "portrait",
-            "group photograph",
-        }
+        category = normalize_category(category)
+        category_type = category_key(category)
+        portrait_category = category_type == "portrait"
+        item_category = category_type == "item"
         effective_inputs = dict(inputs)
-        if not human_focused_category:
+        if not portrait_category:
             effective_inputs.pop("face_visibility", None)
+        if not item_category:
+            effective_inputs.pop("object_visibility", None)
         if pipeline == "hybrid":
             missing_hybrid_inputs = {
                 "predicted_mos",
                 "blur",
                 "composition",
             }.difference(effective_inputs)
-            if human_focused_category and "face_visibility" not in effective_inputs:
+            if portrait_category and "face_visibility" not in effective_inputs:
                 missing_hybrid_inputs.add("face_visibility")
+            if item_category and "object_visibility" not in effective_inputs:
+                missing_hybrid_inputs.add("object_visibility")
             if missing_hybrid_inputs:
                 raise ValueError(
                     "Hybrid Mamdani inference requires inputs: "
@@ -75,7 +84,9 @@ class MamdaniInferenceEngine:
         for var_name, var_obj in self.variables.items():
             if var_name == "quality":
                 continue
-            if var_name == "face_visibility" and not human_focused_category:
+            if var_name == "face_visibility" and not portrait_category:
+                continue
+            if var_name == "object_visibility" and not item_category:
                 continue
             if var_name == "predicted_mos" and var_name not in effective_inputs:
                 continue
@@ -214,7 +225,14 @@ class MamdaniInferenceEngine:
             "rules": rules_meta,
             "pipelines": {
                 "legacy": "Original CV-only Mamdani rulebase used by the fuzzy playground",
-                "hybrid": "RF MOS + noise/blur + category-aware face and composition Mamdani rulebase",
-                "face_categories": ["Portrait", "Group Photograph"],
+                "hybrid": "RF MOS + blur/noise + portrait-face or item-object Mamdani evidence",
+                "supported_categories": [
+                    "Portrait Photography",
+                    "Item Photography",
+                    "Landscape Photography",
+                    "General Photography",
+                ],
+                "face_categories": ["Portrait Photography"],
+                "object_categories": ["Item Photography"],
             },
         }

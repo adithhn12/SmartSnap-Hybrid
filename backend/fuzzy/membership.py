@@ -105,13 +105,19 @@ def create_fuzzy_system_variables() -> Dict[str, FuzzyVariable]:
     face_visibility.add_triangular("Acceptable", 32, 58, 80, description="Partially visible or small faces")
     face_visibility.add_trapezoidal("Clear", 68, 84, 100, 100, description="Prominently centered, well-lit faces")
 
-    # 6. Composition (0 = off-center cutoff, 100 = classic rule-of-thirds balance)
+    # 6. Item subject visibility uses the same linguistic bands without face evidence.
+    object_visibility = FuzzyVariable("object_visibility", unit="pts")
+    object_visibility.add_trapezoidal("Poor", 0, 0, 25, 45, description="Primary object region is unclear or clipped")
+    object_visibility.add_triangular("Acceptable", 32, 58, 80, description="Primary object region is partly visible or weakly framed")
+    object_visibility.add_trapezoidal("Clear", 68, 84, 100, 100, description="Primary object region is distinct and comfortably framed")
+
+    # 7. Composition (0 = off-center cutoff, 100 = classic rule-of-thirds balance)
     composition = FuzzyVariable("composition", unit="pts")
     composition.add_trapezoidal("Poor", 0, 0, 25, 45, description="Awkward edge proximity or bad balance")
     composition.add_triangular("Average", 32, 54, 76, description="Acceptable framing with room for improvement")
     composition.add_trapezoidal("Good", 64, 82, 100, 100, description="Strong rule-of-thirds and subject framing")
 
-    # 7. Random Forest prediction in KonIQ's native MOS scale. The points follow
+    # 8. Random Forest prediction in KonIQ's native MOS scale. The points follow
     # the observed MOS distribution (p05≈2.08, median≈3.28, p95≈3.85); these
     # linguistic terms are not KEEP/RECOVER/RETAKE labels.
     predicted_mos = FuzzyVariable("predicted_mos", unit="MOS", vmin=1.0, vmax=5.0, step=0.01)
@@ -128,7 +134,7 @@ def create_fuzzy_system_variables() -> Dict[str, FuzzyVariable]:
         description="High mean human opinion score on the native KonIQ 1-5 scale",
     )
 
-    # 8. Output: Quality (0 - 100)
+    # 9. Output: Quality (0 - 100)
     quality = FuzzyVariable("quality", unit="pts")
     quality.add_trapezoidal("Very Poor", 0, 0, 15, 30, description="Unusable photo, severe defects")
     quality.add_triangular("Poor", 18, 34, 48, description="Noticeable defects, difficult to salvage")
@@ -142,6 +148,7 @@ def create_fuzzy_system_variables() -> Dict[str, FuzzyVariable]:
         "contrast": contrast,
         "noise": noise,
         "face_visibility": face_visibility,
+        "object_visibility": object_visibility,
         "composition": composition,
         "predicted_mos": predicted_mos,
         "quality": quality,

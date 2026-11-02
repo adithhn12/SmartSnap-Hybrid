@@ -180,10 +180,29 @@ class FaceDetector:
                 y : y + face_height, x : x + face_width
             ]
             if face_roi.size:
-                laplacian_variance = float(
-                    cv2.Laplacian(face_roi, cv2.CV_64F).var()
+                standardized_face = cv2.resize(
+                    face_roi,
+                    (160, 160),
+                    interpolation=(
+                        cv2.INTER_AREA
+                        if face_width > 160 or face_height > 160
+                        else cv2.INTER_LINEAR
+                    ),
                 )
-                clarity_scores.append(1.0 - np.exp(-laplacian_variance / 150.0))
+                regional_detail = []
+                for row in range(4):
+                    for column in range(4):
+                        tile = standardized_face[
+                            row * 40 : (row + 1) * 40,
+                            column * 40 : (column + 1) * 40,
+                        ]
+                        regional_detail.append(
+                            float(cv2.Laplacian(tile, cv2.CV_64F).var())
+                        )
+                # A lower-quartile regional measure is less inflated by a single
+                # sharp occlusion edge than whole-face Laplacian variance.
+                clarity = float(np.quantile(regional_detail, 0.25))
+                clarity_scores.append(1.0 - np.exp(-clarity / 150.0))
 
         if not face_boxes:
             return self._empty_result(

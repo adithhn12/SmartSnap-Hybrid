@@ -8,6 +8,7 @@ from .contrast import estimate_contrast
 from .noise import estimate_noise
 from .face_detection import estimate_face_visibility
 from .composition import estimate_composition
+from .item_subject import estimate_item_subject
 
 __all__ = [
     "estimate_blur",
@@ -16,5 +17,5 @@ __all__ = [
     "estimate_noise",
     "estimate_face_visibility",
     "estimate_composition",
+    "estimate_item_subject",
 ]
-

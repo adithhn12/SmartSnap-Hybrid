@@ -64,7 +64,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
     Builds the structured Mamdani rule base covering:
     - Core quality rules
     - Severe blur and focus degradation rules
-    - Context-aware rules for Portrait, Group, Landscape, Document, General
+    - Context-aware rules for Portrait, Item, Landscape, and General photography
     - Dead-zone prevention universal baselines
     """
     rules: List[FuzzyRule] = []
@@ -113,13 +113,13 @@ def build_default_rule_base() -> List[FuzzyRule]:
     ))
 
     # ==========================================
-    # 2. Portrait & Group Photography Specific Rules
+    # 2. Portrait Photography Specific Rules
     # ==========================================
     rules.append(FuzzyRule(
         "R6", "Portrait Blur with Obscured Face",
         [("blur", "High"), ("face_visibility", "Poor")],
         ("quality", "Very Poor"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=1.0,
         explanation="Unclear subject face and high blur make this portrait unusable."
     ))
@@ -128,7 +128,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "P1", "Severe Blur on Prominently Framed Portrait",
         [("blur", "High"), ("face_visibility", "Clear")],
         ("quality", "Very Poor"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=1.0,
         explanation="A prominent portrait face that suffers from motion blur or optical defocus is completely spoiled."
     ))
@@ -137,7 +137,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "P2", "Severe Blur on Detected Portrait Face",
         [("blur", "High"), ("face_visibility", "Acceptable")],
         ("quality", "Very Poor"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=1.0,
         explanation="Detected subject face is heavily blurred; photographic intent is lost."
     ))
@@ -146,7 +146,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "P3", "Mild Portrait Blur on Clear Subject",
         [("blur", "Medium"), ("face_visibility", "Clear")],
         ("quality", "Poor"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=0.85,
         explanation="Noticeable softening or motion smear on a clear portrait subject degrades quality below keeper standard."
     ))
@@ -155,7 +155,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "P4", "Mild Portrait Blur on Visible Subject",
         [("blur", "Medium"), ("face_visibility", "Acceptable")],
         ("quality", "Poor"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=0.80,
         explanation="Subject face lacks crisp eye and eyelash resolution; difficult to salvage in portraiture."
     ))
@@ -164,7 +164,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "R7", "Clear Sharp Portrait with Great Framing",
         [("blur", "Low"), ("face_visibility", "Clear"), ("composition", "Good")],
         ("quality", "Excellent"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=1.0,
         explanation="Crisp eye focus, well-lit prominent facial features, and balanced framing make a stunning portrait."
     ))
@@ -173,7 +173,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "P5", "Sharp Focus Portrait Baseline",
         [("blur", "Low"), ("face_visibility", "Clear")],
         ("quality", "Good"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=0.90,
         explanation="Clear facial features resolved with crisp subject sharpness."
     ))
@@ -182,7 +182,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "P6", "Acceptable Sharp Portrait",
         [("blur", "Low"), ("face_visibility", "Acceptable")],
         ("quality", "Good"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=0.80,
         explanation="Sharp focus on recognized portrait subject."
     ))
@@ -191,7 +191,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "R8", "Portrait with Poor Composition and Obscured Subject",
         [("composition", "Poor"), ("face_visibility", "Poor")],
         ("quality", "Poor"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=0.80,
         explanation="Awkward composition and unreadable face positioning."
     ))
@@ -200,19 +200,19 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "R9", "Decent Portrait Lighting but Medium Blur",
         [("blur", "Medium"), ("brightness", "Normal"), ("face_visibility", "Acceptable")],
         ("quality", "Moderate"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=0.75,
         explanation="Acceptable lighting and face detection, but mild blur holds it back."
     ))
 
     # ==========================================
-    # 3. Landscape Specific Rules (Faces NOT required)
+    # 3. Landscape Photography Rules (faces are not required)
     # ==========================================
     rules.append(FuzzyRule(
         "R10", "Pristine Landscape Clarity",
         [("blur", "Low"), ("brightness", "Normal"), ("contrast", "High"), ("noise", "Low"), ("composition", "Good")],
         ("quality", "Excellent"),
-        category_scope=["Landscape", "General Photography"],
+        category_scope=["Landscape Photography", "General Photography"],
         weight=1.0,
         explanation="Crystal clarity, rich dynamic range, clean shadows, and great composition for scenery."
     ))
@@ -221,7 +221,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "R11", "Good Landscape Balanced Exposure",
         [("blur", "Low"), ("brightness", "Normal"), ("contrast", "Medium")],
         ("quality", "Good"),
-        category_scope=["Landscape", "General Photography"],
+        category_scope=["Landscape Photography", "General Photography"],
         weight=0.90,
         explanation="Well-exposed scene with solid sharpness."
     ))
@@ -230,7 +230,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "R12", "Hazy or Low Contrast Landscape",
         [("contrast", "Low"), ("noise", "Medium")],
         ("quality", "Moderate"),
-        category_scope=["Landscape"],
+        category_scope=["Landscape Photography"],
         weight=0.75,
         explanation="Low contrast or haze limits scenery impact, but can be recovered."
     ))
@@ -239,52 +239,13 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "R13", "Blurry Scenery",
         [("blur", "Medium"), ("composition", "Average")],
         ("quality", "Moderate"),
-        category_scope=["Landscape"],
+        category_scope=["Landscape Photography"],
         weight=0.75,
         explanation="Landscape lacks crisp edge definition."
     ))
 
     # ==========================================
-    # 4. Document Specific Rules (Text readability)
-    # ==========================================
-    rules.append(FuzzyRule(
-        "R14", "Razor-Sharp Readable Document",
-        [("blur", "Low"), ("contrast", "High"), ("noise", "Low")],
-        ("quality", "Excellent"),
-        category_scope=["Document"],
-        weight=1.0,
-        explanation="High text contrast, sharp letter boundaries, and clean background."
-    ))
-
-    rules.append(FuzzyRule(
-        "R15", "Blurry Unreadable Document",
-        [("blur", "High")],
-        ("quality", "Very Poor"),
-        category_scope=["Document"],
-        weight=1.0,
-        explanation="Document text is illegible due to blur."
-    ))
-
-    rules.append(FuzzyRule(
-        "R16", "Low Contrast Document",
-        [("contrast", "Low"), ("brightness", "Dark")],
-        ("quality", "Poor"),
-        category_scope=["Document"],
-        weight=0.85,
-        explanation="Dim lighting and low contrast make characters faint."
-    ))
-
-    rules.append(FuzzyRule(
-        "R17", "Adequate Document with Minor Grain",
-        [("blur", "Low"), ("contrast", "Medium"), ("brightness", "Normal")],
-        ("quality", "Good"),
-        category_scope=["Document"],
-        weight=0.85,
-        explanation="Document is fully readable with balanced lighting."
-    ))
-
-    # ==========================================
-    # 5. General Photography Rules (Strict Sharpness Enforcement)
+    # 4. General Photography Rules (Strict Sharpness Enforcement)
     # Note: Every rule leading to Good or Excellent quality REQUIRES blur is Low!
     # ==========================================
     rules.append(FuzzyRule(
@@ -559,7 +520,7 @@ def build_default_rule_base() -> List[FuzzyRule]:
         "ML6", "Low Predicted MOS with Poor Portrait Face Visibility",
         [("predicted_mos", "Low"), ("face_visibility", "Poor")],
         ("quality", "Very Poor"),
-        category_scope=["Portrait", "Group Photograph"],
+        category_scope=["Portrait Photography"],
         weight=0.85,
         explanation="A low learned perceptual score and poor face visibility jointly degrade a portrait."
     ))
@@ -606,7 +567,7 @@ def build_hybrid_rule_base() -> List[FuzzyRule]:
             [("predicted_mos", "Medium"), ("blur", "Low"), ("face_visibility", "Clear"), ("composition", "Average")],
             ("quality", "Good"),
             weight=0.90,
-            category_scope=["Portrait", "Group Photograph"],
+            category_scope=["Portrait Photography"],
             explanation="A typical MOS is supported by crisp focus, visible faces, and acceptable portrait framing.",
         ),
         FuzzyRule(
@@ -614,8 +575,8 @@ def build_hybrid_rule_base() -> List[FuzzyRule]:
             [("predicted_mos", "High"), ("blur", "Low")],
             ("quality", "Excellent"),
             weight=0.95,
-            category_scope=["Landscape", "General Photography", "Document"],
-            explanation="High learned perceptual quality is corroborated by sharp focus; portrait intent is handled with face-specific rules.",
+            category_scope=["Landscape Photography", "Item Photography", "General Photography"],
+            explanation="High learned perceptual quality is corroborated by sharp focus in a non-portrait category.",
         ),
         FuzzyRule(
             "H9", "Medium blur with mid MOS",
@@ -636,8 +597,8 @@ def build_hybrid_rule_base() -> List[FuzzyRule]:
             "H11", "Poor portrait visibility with low MOS",
             [("predicted_mos", "Low"), ("face_visibility", "Poor")],
             ("quality", "Very Poor"),
-            category_scope=["Portrait", "Group Photograph"],
-            explanation="Poor face visibility matters for portrait/group intent, not landscape or document images.",
+            category_scope=["Portrait Photography"],
+            explanation="Poor face visibility applies only to Portrait Photography.",
         ),
         FuzzyRule(
             "H12", "Poor framing with low MOS",
@@ -647,36 +608,20 @@ def build_hybrid_rule_base() -> List[FuzzyRule]:
             explanation="Low perceptual quality combined with clearly poor category-aware framing.",
         ),
         FuzzyRule(
-            "H13", "Mid MOS and sharp readable document",
-            [("predicted_mos", "Medium"), ("blur", "Low")],
-            ("quality", "Excellent"),
-            weight=0.85,
-            category_scope=["Document"],
-            explanation="Readable sharpness and an average perceptual score support retaining a document image.",
-        ),
-        FuzzyRule(
-            "H14", "High MOS with sharp readable document",
-            [("predicted_mos", "High"), ("blur", "Low")],
-            ("quality", "Excellent"),
-            weight=0.95,
-            category_scope=["Document"],
-            explanation="High perceptual quality and sharp text support excellent document capture.",
-        ),
-        FuzzyRule(
             "H15", "Mid MOS with sharp non-portrait scene",
             [("predicted_mos", "Medium"), ("blur", "Low")],
             ("quality", "Excellent"),
             weight=0.85,
-            category_scope=["Landscape", "General Photography"],
-            explanation="The population-typical MOS is supported by clear focus; scene and object quality do not require detected faces.",
+            category_scope=["Landscape Photography", "Item Photography", "General Photography"],
+            explanation="The population-typical MOS is supported by clear focus without requiring face evidence.",
         ),
         FuzzyRule(
             "H16", "High MOS with sharp visible portrait subject",
             [("predicted_mos", "High"), ("blur", "Low"), ("face_visibility", "Clear")],
             ("quality", "Excellent"),
             weight=0.95,
-            category_scope=["Portrait", "Group Photograph"],
-            explanation="High perceptual quality is corroborated by sharp focus and visible portrait subjects.",
+            category_scope=["Portrait Photography"],
+            explanation="High perceptual quality is corroborated by sharp focus and visible portrait facial detail.",
         ),
         FuzzyRule(
             "H17", "High estimated noise degrades fidelity",
@@ -704,7 +649,7 @@ def build_hybrid_rule_base() -> List[FuzzyRule]:
             ],
             ("quality", "Good"),
             weight=0.90,
-            category_scope=["Portrait", "Group Photograph"],
+            category_scope=["Portrait Photography"],
             explanation="Sharp focus, a clean signal, visible facial detail, and strong framing support good portrait quality alongside the learned MOS estimate.",
         ),
         FuzzyRule(
@@ -719,8 +664,73 @@ def build_hybrid_rule_base() -> List[FuzzyRule]:
             ],
             ("quality", "Excellent"),
             weight=0.90,
-            category_scope=["Portrait", "Group Photograph"],
+            category_scope=["Portrait Photography"],
             explanation="Strong portrait clarity and framing, balanced lighting, and rich tonal contrast jointly support excellent technical quality.",
+        ),
+        FuzzyRule(
+            "H21", "Sharp, clearly visible portrait in balanced light",
+            [
+                ("blur", "Low"),
+                ("noise", "Low"),
+                ("face_visibility", "Clear"),
+                ("composition", "Good"),
+                ("brightness", "Normal"),
+            ],
+            ("quality", "Excellent"),
+            weight=1.0,
+            category_scope=["Portrait Photography"],
+            explanation="Sharp facial detail, clear visibility, balanced face exposure, clean signal, and strong framing support a keeper portrait.",
+        ),
+        FuzzyRule(
+            "H22", "Underexposure with weak tonal separation",
+            [("brightness", "Dark"), ("contrast", "Low")],
+            ("quality", "Poor"),
+            weight=0.90,
+            category_scope=["all"],
+            explanation="Dark exposure and weak tonal separation can hide important photographic detail.",
+        ),
+        FuzzyRule(
+            "H23", "Clipped exposure with weak tonal separation",
+            [("brightness", "Overexposed"), ("contrast", "Low")],
+            ("quality", "Poor"),
+            weight=0.90,
+            category_scope=["all"],
+            explanation="Bright clipping combined with weak tonal separation can erase recoverable highlights.",
+        ),
+        FuzzyRule(
+            "I1", "Sharp, clean, visible primary item",
+            [
+                ("blur", "Low"),
+                ("noise", "Low"),
+                ("object_visibility", "Clear"),
+                ("composition", "Good"),
+            ],
+            ("quality", "Good"),
+            weight=0.95,
+            category_scope=["Item Photography"],
+            explanation="A sharp, clean primary object with clear visibility and balanced framing supports good item-photo quality.",
+        ),
+        FuzzyRule(
+            "I2", "Balanced-light sharp item photograph",
+            [
+                ("blur", "Low"),
+                ("noise", "Low"),
+                ("object_visibility", "Clear"),
+                ("composition", "Good"),
+                ("brightness", "Normal"),
+            ],
+            ("quality", "Excellent"),
+            weight=1.0,
+            category_scope=["Item Photography"],
+            explanation="Sharp object detail, clear visibility, balanced exposure, and good framing jointly support a keeper item photograph.",
+        ),
+        FuzzyRule(
+            "I3", "Low MOS with unclear primary item",
+            [("predicted_mos", "Low"), ("object_visibility", "Poor")],
+            ("quality", "Very Poor"),
+            weight=0.85,
+            category_scope=["Item Photography"],
+            explanation="A low perceptual estimate combined with a poorly visible or clipped primary object is a substantial defect.",
         ),
     ]
     return rules

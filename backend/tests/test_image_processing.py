@@ -15,6 +15,7 @@ from backend.image_processing import (
     estimate_noise,
     estimate_face_visibility,
     estimate_composition,
+    estimate_item_subject,
 )
 
 
@@ -145,36 +146,157 @@ def test_composition():
     assert "subject_type" in comp_res
 
 
-def test_group_composition_uses_all_face_centers():
+def test_portrait_composition_uses_primary_face():
     img = np.zeros((300, 600, 3), dtype=np.uint8)
     faces = [
         {"x": 80, "y": 80, "w": 80, "h": 80},
         {"x": 440, "y": 80, "w": 80, "h": 80},
     ]
 
-    result = estimate_composition(img, faces=faces, category="Group Photograph")
+    result = estimate_composition(
+        img, faces=faces, category="Portrait Photography"
+    )
 
-    assert result["subject_type"] == "Detected group centroid"
-    assert result["subject_center"]["x"] == pytest.approx(0.5)
+    assert result["subject_type"] == "Detected Face"
+    assert result["subject_center"]["x"] == pytest.approx(0.2)
 
 
-def test_document_composition_uses_page_geometry():
-    img = np.full((300, 400, 3), 30, dtype=np.uint8)
-    cv2.rectangle(img, (70, 30), (330, 270), (245, 245, 245), -1)
-    cv2.rectangle(img, (70, 30), (330, 270), (0, 0, 0), 3)
+def test_item_composition_uses_primary_object_region():
+    img = np.zeros((300, 400, 3), dtype=np.uint8)
+    object_region = {"x": 70, "y": 30, "w": 260, "h": 240}
 
-    result = estimate_composition(img, category="Document")
+    result = estimate_composition(
+        img,
+        category="Item Photography",
+        subject_regions=[object_region],
+    )
 
-    assert result["subject_type"] == "Detected document page"
-    assert result["method"] == "Convex page quadrilateral center and opposite-edge consistency"
+    assert result["subject_type"] == "Detected primary object region"
+    assert result["subject_center"] == {"x": 0.5, "y": 0.5}
     assert result["composition"] > 80.0
+
+
+def test_item_subject_proposal_returns_box_or_neutral_fallback():
+    image = np.full((240, 320, 3), 30, dtype=np.uint8)
+    cv2.rectangle(image, (95, 45), (225, 195), (220, 220, 220), -1)
+
+    result = estimate_item_subject(image)
+
+    assert 0.0 <= result["object_visibility"] <= 100.0
+    if result["object_detected"]:
+        assert result["object_box"]["w"] > 0
+        assert result["object_box"]["h"] > 0
+        assert "not semantic object recognition" in result["explanation"]
+    else:
+        assert result["object_visibility"] == 50.0
+
+
+@pytest.mark.parametrize("shape", ["rectangle", "circle"])
+def test_item_subject_proposal_handles_object_shapes_and_clutter(shape):
+    rng = np.random.default_rng(77)
+    image = np.full((300, 400, 3), 55, dtype=np.uint8)
+    image[::12, :, :] = 64
+    image[:, ::12, :] = 64
+    if shape == "rectangle":
+        cv2.rectangle(image, (135, 55), (275, 250), (210, 210, 210), -1)
+        cv2.rectangle(image, (155, 80), (255, 220), (25, 25, 25), 3)
+    else:
+        cv2.circle(image, (205, 150), 92, (210, 210, 210), -1)
+        cv2.circle(image, (205, 150), 58, (30, 30, 30), 4)
+    image[120:155, 182:220] = np.clip(
+        image[120:155, 182:220].astype(np.int16)
+        + rng.integers(-20, 21, size=(35, 38, 1)),
+        0,
+        255,
+    ).astype(np.uint8)
+    cv2.rectangle(image, (10, 25), (70, 100), (180, 90, 40), -1)
+
+    result = estimate_item_subject(image)
+
+    assert 0.0 <= result["object_visibility"] <= 100.0
+    if result["object_detected"]:
+        box = result["object_box"]
+        assert 0 <= box["x"] < image.shape[1]
+        assert 0 <= box["y"] < image.shape[0]
+        assert box["w"] > 0 and box["h"] > 0
+    else:
+        assert result["object_visibility"] == 50.0
+
+
+def test_partially_obscured_portrait_face_keeps_bounded_region_metrics():
+    clear_face = _make_rock_tree_landscape()[80:200, 120:240].copy()
+    obscured_face = clear_face.copy()
+    obscured_face[42:82, 25:95] = 90
+    image = np.full((220, 220, 3), 70, dtype=np.uint8)
+    image[50:170, 50:170] = obscured_face
+    faces = [{"x": 50, "y": 50, "w": 120, "h": 120}]
+
+    result = estimate_blur(
+        image,
+        faces=faces,
+        category="Portrait Photography",
+    )
+
+    clear_result = estimate_blur(
+        cv2.copyMakeBorder(
+            clear_face, 50, 50, 50, 50, cv2.BORDER_CONSTANT, value=(70, 70, 70)
+        ),
+        faces=faces,
+        category="Portrait Photography",
+    )
+    assert result["face_sharpnesses"]
+    assert all(0.0 <= value <= 100.0 for value in result["face_sharpnesses"])
+    assert 0.0 <= result["sharpness"] <= 100.0
+    assert 0.0 <= clear_result["sharpness"] <= 100.0
+
+
+def test_face_visibility_does_not_reward_a_sharp_occlusion_edge():
+    image = _local_upload("c3b8f6cf-fe5f-4996-9bf0-9b775522fd69.jpeg")
+    baseline = estimate_face_visibility(image)
+    if not baseline["faces"]:
+        pytest.skip("Reference portrait face was not detected.")
+
+    face = baseline["faces"][0]
+    occluded = image.copy()
+    covered_height = max(1, round(face["h"] * 0.25))
+    occluded[
+        face["y"] : face["y"] + covered_height,
+        face["x"] : face["x"] + face["w"],
+    ] = 0
+    result = estimate_face_visibility(occluded)
+
+    assert 0.0 <= result["face_visibility"] <= 100.0
+    assert result["face_visibility"] < baseline["face_visibility"]
+
+
+def test_item_exposure_uses_object_region_without_face_metrics():
+    image = np.full((220, 320, 3), 25, dtype=np.uint8)
+    image[45:175, 95:225] = 190
+    object_region = [{"x": 95, "y": 45, "w": 130, "h": 130}]
+    fake_face = [{"x": 0, "y": 0, "w": 80, "h": 80}]
+
+    subject_weighted = estimate_brightness(
+        image,
+        faces=fake_face,
+        category="Item Photography",
+        subject_regions=object_region,
+    )
+    face_only = estimate_brightness(
+        image,
+        faces=fake_face,
+        category="Item Photography",
+    )
+
+    assert subject_weighted["subject_luminance"] > subject_weighted["global_luminance"]
+    assert subject_weighted["brightness"] > subject_weighted["global_luminance"]
+    assert face_only["subject_luminance"] is None
 
 
 def test_blur_receives_faces_kwarg():
     """Verify that passing faces= kwarg to estimate_blur does not raise errors."""
     img = np.ones((200, 200, 3), dtype=np.uint8) * 128
     fake_faces = [{"x": 50, "y": 50, "w": 80, "h": 80}]
-    res_with_faces = estimate_blur(img, faces=fake_faces, category="Portrait")
+    res_with_faces = estimate_blur(img, faces=fake_faces, category="Portrait Photography")
     res_without_faces = estimate_blur(img, faces=None)
     assert "sharpness" in res_with_faces
     assert "blur" in res_with_faces
@@ -187,12 +309,12 @@ def test_non_human_categories_ignore_face_boxes_for_blur_and_brightness():
     image = _make_rock_tree_landscape()
     face = [{"x": 180, "y": 120, "w": 80, "h": 80}]
 
-    landscape_with_face = estimate_blur(image, faces=face, category="Landscape")
-    landscape_without_face = estimate_blur(image, category="Landscape")
+    landscape_with_face = estimate_blur(image, faces=face, category="Landscape Photography")
+    landscape_without_face = estimate_blur(image, category="Landscape Photography")
     general_with_face = estimate_blur(image, faces=face, category="General Photography")
     general_without_face = estimate_blur(image, category="General Photography")
     brightness_with_face = estimate_brightness(
-        image, faces=face, category="Landscape"
+        image, faces=face, category="Landscape Photography"
     )
     brightness_without_face = estimate_brightness(image)
 
@@ -203,11 +325,62 @@ def test_non_human_categories_ignore_face_boxes_for_blur_and_brightness():
     assert brightness_with_face["brightness"] == brightness_without_face["brightness"]
 
 
+def test_portrait_sharpness_accounts_for_every_detected_face():
+    sharp = _make_rock_tree_landscape()[80:200, 120:240]
+    soft = cv2.GaussianBlur(sharp, (31, 31), 10.0)
+    image = np.full((300, 500, 3), 80, dtype=np.uint8)
+    image[80:200, 80:200] = sharp
+    image[80:200, 320:440] = soft
+    faces = [
+        {"x": 80, "y": 80, "w": 120, "h": 120},
+        {"x": 320, "y": 80, "w": 120, "h": 120},
+    ]
+
+    result = estimate_blur(image, faces=faces, category="Portrait Photography")
+
+    assert len(result["face_sharpnesses"]) == 2
+    assert result["face_sharpnesses"][0] > result["face_sharpnesses"][1]
+    assert result["face_sharpness"] < result["face_sharpnesses"][0]
+
+
+def test_item_blur_distinguishes_object_detail_from_background_texture():
+    region = {"x": 150, "y": 90, "w": 180, "h": 180}
+    checker = (np.indices((180, 180)).sum(axis=0) // 6 % 2 * 180 + 35).astype(
+        np.uint8
+    )
+    sharp_object = cv2.cvtColor(checker, cv2.COLOR_GRAY2BGR)
+    smooth_background = np.full((360, 480, 3), 110, dtype=np.uint8)
+    sharp_object_scene = smooth_background.copy()
+    sharp_object_scene[90:270, 150:330] = sharp_object
+
+    textured_background = np.indices((360, 480)).sum(axis=0) // 4 % 2
+    textured_background = (textured_background * 180 + 35).astype(np.uint8)
+    blurred_object_scene = cv2.cvtColor(textured_background, cv2.COLOR_GRAY2BGR)
+    blurred_object_scene[90:270, 150:330] = cv2.GaussianBlur(
+        sharp_object, (31, 31), 10.0
+    )
+
+    sharp_result = estimate_blur(
+        sharp_object_scene,
+        category="Item Photography",
+        subject_regions=[region],
+    )
+    blurred_result = estimate_blur(
+        blurred_object_scene,
+        category="Item Photography",
+        subject_regions=[region],
+    )
+
+    assert sharp_result["object_sharpness"] > blurred_result["object_sharpness"]
+    assert blurred_result["focus_discrepancy"] is True
+    assert blurred_result["blur"] > sharp_result["blur"]
+
+
 def test_landscape_rock_tree_cloud_and_reflection_textures_are_not_noise_or_blur():
     image = _make_rock_tree_landscape()
 
     faces = estimate_face_visibility(image)
-    blur = estimate_blur(image, faces=faces["faces"], category="Landscape")
+    blur = estimate_blur(image, faces=faces["faces"], category="Landscape Photography")
     brightness = estimate_brightness(image)
     contrast = estimate_contrast(image)
     noise = estimate_noise(image)
@@ -260,7 +433,7 @@ def test_clear_portrait_uses_consensus_face_and_face_focus():
     image = _local_upload("09f89e70-8828-415b-a625-d6c8d8ed099b.jpeg")
 
     faces = estimate_face_visibility(image)
-    blur = estimate_blur(image, faces=faces["faces"], category="Portrait")
+    blur = estimate_blur(image, faces=faces["faces"], category="Portrait Photography")
 
     assert faces["face_count"] >= 1
     assert faces["confidence"] >= 2.0 / 3.0
@@ -272,7 +445,7 @@ def test_blurred_portrait_face_is_verified_but_not_reported_sharp():
     image = _local_upload("4ae4bd8c-697e-4821-81fc-567b251803e9.jpg")
 
     faces = estimate_face_visibility(image)
-    blur = estimate_blur(image, faces=faces["faces"], category="Portrait")
+    blur = estimate_blur(image, faces=faces["faces"], category="Portrait Photography")
 
     assert faces["face_count"] >= 1
     assert faces["confidence"] >= 2.0 / 3.0
@@ -283,7 +456,7 @@ def test_blurred_portrait_face_is_verified_but_not_reported_sharp():
 
 def test_sharp_balanced_landscape_and_severe_motion_blur_are_distinguished():
     sharp_image = _make_rock_tree_landscape()
-    sharp = estimate_blur(sharp_image, category="Landscape")
+    sharp = estimate_blur(sharp_image, category="Landscape Photography")
     exposure = estimate_brightness(sharp_image)
 
     motion_source = np.full((512, 768, 3), 125, dtype=np.uint8)
@@ -292,7 +465,7 @@ def test_sharp_balanced_landscape_and_severe_motion_blur_are_distinguished():
         cv2.rectangle(motion_source, (x, 0), (x + 3, 511), (shade, shade, shade), -1)
     motion_kernel = np.ones((1, 41), dtype=np.float32) / 41.0
     motion_blurred = cv2.filter2D(motion_source, -1, motion_kernel)
-    motion = estimate_blur(motion_blurred, category="Landscape")
+    motion = estimate_blur(motion_blurred, category="Landscape Photography")
 
     assert sharp["blur"] < 30.0
     assert 40.0 <= exposure["brightness"] <= 70.0
@@ -308,8 +481,8 @@ def test_high_sensor_noise_is_not_mistaken_for_sharpness():
         255,
     ).astype(np.uint8)
 
-    clean_blur = estimate_blur(smooth, category="Landscape")
-    noisy_blur = estimate_blur(noisy, category="Landscape")
+    clean_blur = estimate_blur(smooth, category="Landscape Photography")
+    noisy_blur = estimate_blur(noisy, category="Landscape Photography")
     noisy_estimate = estimate_noise(noisy)
 
     assert noisy_estimate["noise"] > 80.0
@@ -322,7 +495,7 @@ def test_brightness_subject_background_segmentation():
     # Bright subject region
     img[50:150, 50:150] = 200
     fake_faces = [{"x": 50, "y": 50, "w": 100, "h": 100}]
-    res = estimate_brightness(img, faces=fake_faces, category="Portrait")
+    res = estimate_brightness(img, faces=fake_faces, category="Portrait Photography")
     assert res["subject_luminance"] is not None
     assert res["background_luminance"] is not None
     # Subject should be brighter than background

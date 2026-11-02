@@ -9,28 +9,38 @@ import AggregatedOutputChart from '../components/AggregatedOutputChart';
 const PRESETS = [
   {
     name: 'Ideal Sharp Portrait',
-    category: 'Portrait',
+    category: 'Portrait Photography',
     inputs: { blur: 10, brightness: 52, contrast: 80, noise: 8, face_visibility: 92, composition: 85 },
   },
   {
     name: 'Blurry Portrait (Defocus)',
-    category: 'Portrait',
+    category: 'Portrait Photography',
     inputs: { blur: 88, brightness: 50, contrast: 55, noise: 15, face_visibility: 30, composition: 60 },
   },
   {
     name: 'Missed Focus (Blurry Subject, Sharp BG)',
-    category: 'Portrait',
+    category: 'Portrait Photography',
     inputs: { blur: 82, brightness: 52, contrast: 60, noise: 8, face_visibility: 75, composition: 80 },
   },
   {
     name: 'Severe Motion-Blurred Portrait',
-    category: 'Portrait',
+    category: 'Portrait Photography',
     inputs: { blur: 92, brightness: 48, contrast: 40, noise: 7, face_visibility: 68, composition: 70 },
   },
   {
     name: 'Scenic Landscape (0 Faces)',
-    category: 'Landscape',
+    category: 'Landscape Photography',
     inputs: { blur: 12, brightness: 54, contrast: 85, noise: 10, face_visibility: 0, composition: 85 },
+  },
+  {
+    name: 'Sharp, clearly framed item',
+    category: 'Item Photography',
+    inputs: { blur: 8, brightness: 55, contrast: 65, noise: 8, object_visibility: 92, composition: 85 },
+  },
+  {
+    name: 'Poorly focused item',
+    category: 'Item Photography',
+    inputs: { blur: 88, brightness: 45, contrast: 50, noise: 25, object_visibility: 65, composition: 55 },
   },
   {
     name: 'Dark & Low Contrast',
@@ -62,6 +72,7 @@ export default function PlaygroundPage({ metadata }) {
     contrast: 65.0,
     noise: 15.0,
     face_visibility: 75.0,
+    object_visibility: 75.0,
     composition: 70.0,
   });
 
@@ -104,6 +115,7 @@ export default function PlaygroundPage({ metadata }) {
       contrast: 60.0,
       noise: 15.0,
       face_visibility: 75.0,
+      object_visibility: 75.0,
       composition: 70.0,
     });
   };
@@ -123,6 +135,7 @@ export default function PlaygroundPage({ metadata }) {
     { key: 'contrast', label: 'Contrast', min: 0, max: 100, step: 1, desc: '0 = Washed, 100 = Dynamic Range' },
     { key: 'noise', label: 'Noise / Grain', min: 0, max: 100, step: 1, desc: '0 = Clean, 100 = Heavy Grain' },
     { key: 'face_visibility', label: 'Face Visibility', min: 0, max: 100, step: 1, desc: '0 = None, 100 = Prominent' },
+    { key: 'object_visibility', label: 'Primary Object Visibility', min: 0, max: 100, step: 1, desc: '0 = Unclear, 100 = Clearly framed' },
     { key: 'composition', label: 'Composition', min: 0, max: 100, step: 1, desc: '0 = Poor, 100 = Rule of Thirds' },
   ];
 
@@ -176,17 +189,19 @@ export default function PlaygroundPage({ metadata }) {
                 onChange={(e) => setCategory(e.target.value)}
                 style={{ padding: '6px 10px', fontSize: '0.82rem' }}
               >
+                <option value="Portrait Photography">Portrait Photography</option>
+                <option value="Item Photography">Item Photography</option>
+                <option value="Landscape Photography">Landscape Photography</option>
                 <option value="General Photography">General Photography</option>
-                <option value="Portrait">Portrait</option>
-                <option value="Group Photograph">Group Photograph</option>
-                <option value="Landscape">Landscape</option>
-                <option value="Document">Document</option>
               </select>
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {sliders.map((s) => {
+            {sliders
+              .filter((slider) => slider.key !== 'face_visibility' || category === 'Portrait Photography')
+              .filter((slider) => slider.key !== 'object_visibility' || category === 'Item Photography')
+              .map((s) => {
               const val = inputs[s.key] ?? 50;
               return (
                 <div key={s.key} className="slider-container" style={{ marginBottom: '4px' }}>
@@ -208,7 +223,7 @@ export default function PlaygroundPage({ metadata }) {
                   />
                 </div>
               );
-            })}
+              })}
           </div>
         </div>
 

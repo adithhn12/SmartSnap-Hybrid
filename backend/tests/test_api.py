@@ -19,6 +19,12 @@ def test_service_metadata(service):
     assert "rules" in meta
     assert "blur" in meta["variables"]
     assert "quality" in meta["variables"]
+    assert meta["pipelines"]["supported_categories"] == [
+        "Portrait Photography",
+        "Item Photography",
+        "Landscape Photography",
+        "General Photography",
+    ]
 
 
 def test_service_simulate(service):
@@ -30,11 +36,13 @@ def test_service_simulate(service):
         "face_visibility": 90.0,
         "composition": 85.0,
     }
-    result = service.simulate_fuzzy(inputs, category="Portrait")
+    result = service.simulate_fuzzy(inputs, category="Portrait Photography")
     assert "fuzzy" in result
     assert "decision" in result
     assert result["decision"]["recommendation"] == "KEEP"
     assert result["fuzzy"]["defuzzified_score"] >= 75.0
+    with pytest.raises(ValueError, match="Unsupported photography category"):
+        service.simulate_fuzzy(inputs, category="Unsupported")
 
 
 def test_service_analyze_image(service):
@@ -57,7 +65,7 @@ def test_service_analyze_image(service):
     assert "decision" in record
     assert "aggregated_curve" in record["fuzzy"]
     assert "defuzzified_score" in record["fuzzy"]
-    assert len(record["features"]) == 6
+    assert len(record["features"]) == 7
 
 
 def test_service_dashboard_and_history(service):

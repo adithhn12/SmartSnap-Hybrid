@@ -93,7 +93,7 @@ def test_rf_sharpness_feature_preserves_the_loaded_model_preprocessing():
     )["sharpness"]
     corrected_cv_sharpness = estimate_blur(
         noisy_image,
-        category="Landscape",
+        category="Landscape Photography",
     )["sharpness"]
 
     assert extracted["sharpness"] == trained_model_sharpness
@@ -183,7 +183,7 @@ def test_hybrid_mos_ordering_from_mamdani_output():
 @pytest.mark.parametrize(
     ("name", "mos", "blur", "face_visibility", "composition", "category", "prior_score"),
     [
-        ("landscape", 3.4176, 0.14, 72.0, 65.38, "Landscape", 54.03),
+        ("landscape", 3.4176, 0.14, 72.0, 65.38, "Landscape Photography", 54.03),
         ("blurred street", 2.6383, 99.37, 43.08, 86.68, "General Photography", 53.25),
         ("sports car", 3.3407, 0.62, 0.0, 59.76, "General Photography", 53.25),
     ],
@@ -276,7 +276,7 @@ def test_hybrid_portrait_rules_balance_model_and_cv_evidence(
     engine = MamdaniInferenceEngine()
     result = engine.compute(
         inputs,
-        category="Portrait",
+        category="Portrait Photography",
         only_provided_inputs=True,
         pipeline="hybrid",
     )
@@ -298,6 +298,121 @@ def test_hybrid_portrait_rules_balance_model_and_cv_evidence(
         assert not {"H19", "H20"} & activated_ids
 
 
+@pytest.mark.parametrize(
+    ("category", "subject_key"),
+    [
+        ("Portrait Photography", "face_visibility"),
+        ("Item Photography", "object_visibility"),
+        ("Landscape Photography", None),
+        ("General Photography", None),
+    ],
+)
+@pytest.mark.parametrize(
+    ("profile", "expected"),
+    [
+        ("good", "KEEP"),
+        ("moderate", "RECOVER"),
+        ("poor", "RETAKE"),
+    ],
+)
+def test_category_profiles_cover_good_moderate_and_poor_cases(
+    category, subject_key, profile, expected
+):
+    profile_inputs = {
+        "good": {
+            "predicted_mos": 3.4,
+            "blur": 5,
+            "brightness": 52,
+            "contrast": 75,
+            "noise": 5,
+            "face_visibility": 85,
+            "object_visibility": 85,
+            "composition": 85,
+        },
+        "moderate": {
+            "predicted_mos": 3.0,
+            "blur": 46,
+            "brightness": 45,
+            "contrast": 50,
+            "noise": 20,
+            "face_visibility": 60,
+            "object_visibility": 60,
+            "composition": 55,
+        },
+        "poor": {
+            "predicted_mos": 2.4,
+            "blur": 95,
+            "brightness": 30,
+            "contrast": 20,
+            "noise": 80,
+            "face_visibility": 20,
+            "object_visibility": 20,
+            "composition": 20,
+        },
+    }
+    inputs = dict(profile_inputs[profile])
+    if category != "Portrait Photography":
+        inputs.pop("face_visibility")
+    if category != "Item Photography":
+        inputs.pop("object_visibility")
+
+    result = MamdaniInferenceEngine().compute(
+        inputs,
+        category=category,
+        pipeline="hybrid",
+        only_provided_inputs=True,
+    )
+    decision = DecisionEngine().evaluate(result)
+
+    assert decision["recommendation"] == expected
+    assert (subject_key in result["input_values"]) == (subject_key is not None)
+    if expected == "KEEP":
+        assert result["defuzzified_score"] >= decision["thresholds"]["keep"]
+    elif expected == "RETAKE":
+        assert result["defuzzified_score"] < decision["thresholds"]["recover"]
+
+
+def test_unsupported_category_is_rejected():
+    with pytest.raises(ValueError, match="Unsupported photography category"):
+        MamdaniInferenceEngine().compute(
+            {"blur": 10, "composition": 80},
+            category="Other Category",
+        )
+
+
+@pytest.mark.parametrize(
+    ("category", "subject_key"),
+    [
+        ("Portrait Photography", "face_visibility"),
+        ("Item Photography", "object_visibility"),
+    ],
+)
+def test_exposure_defects_reduce_good_subject_scores(category, subject_key):
+    engine = MamdaniInferenceEngine()
+    common = {
+        "predicted_mos": 3.3,
+        "blur": 5,
+        "contrast": 15,
+        "noise": 5,
+        "composition": 85,
+        subject_key: 85,
+    }
+    results = {
+        brightness: engine.compute(
+            {**common, "brightness": brightness},
+            category=category,
+            pipeline="hybrid",
+            only_provided_inputs=True,
+        )
+        for brightness in (52, 18, 92)
+    }
+
+    assert results[18]["defuzzified_score"] < results[52]["defuzzified_score"]
+    assert results[92]["defuzzified_score"] < results[52]["defuzzified_score"]
+    assert "H22" in {r["rule_id"] for r in results[18]["activated_rules"]}
+    assert "H23" in {r["rule_id"] for r in results[92]["activated_rules"]}
+
+
 def test_very_low_mos_with_strong_portrait_cv_remains_recover_not_keep():
     result = MamdaniInferenceEngine().compute(
         {
@@ -309,7 +424,7 @@ def test_very_low_mos_with_strong_portrait_cv_remains_recover_not_keep():
             "face_visibility": 85,
             "composition": 85,
         },
-        category="Portrait",
+        category="Portrait Photography",
         only_provided_inputs=True,
         pipeline="hybrid",
     )
@@ -336,12 +451,15 @@ def test_severe_blur_uses_mamdani_rules_to_reach_retake_score_band():
     assert decision["recommendation"] == "RETAKE"
 
 
-@pytest.mark.parametrize("category", ["Landscape", "Document"])
+@pytest.mark.parametrize("category", ["Landscape Photography", "Item Photography"])
 def test_non_portrait_hybrid_score_is_independent_of_face_detection(category):
     engine = MamdaniInferenceEngine()
+    common = {"predicted_mos": 3.3, "blur": 5.0, "composition": 70.0}
+    if category == "Item Photography":
+        common["object_visibility"] = 80.0
     results = [
         engine.compute(
-            {"predicted_mos": 3.3, "blur": 5.0, "face_visibility": face, "composition": 70.0},
+            {**common, "face_visibility": face},
             category=category,
             pipeline="hybrid",
             only_provided_inputs=True,
@@ -355,10 +473,15 @@ def test_non_portrait_hybrid_score_is_independent_of_face_detection(category):
     assert not any(rule["rule_id"] in {"H7", "H11", "H16"} for rule in results[0]["activated_rules"])
 
 
-@pytest.mark.parametrize("category", ["Landscape", "Document", "General Photography"])
+@pytest.mark.parametrize(
+    "category",
+    ["Landscape Photography", "Item Photography", "General Photography"],
+)
 def test_non_human_category_discards_face_input(category):
     engine = MamdaniInferenceEngine()
     common = {"predicted_mos": 3.3, "blur": 12.0, "noise": 8.0, "composition": 70.0}
+    if category == "Item Photography":
+        common["object_visibility"] = 80.0
     without_face = engine.compute(
         common, category=category, pipeline="hybrid", only_provided_inputs=True
     )
@@ -431,13 +554,13 @@ def test_hybrid_high_noise_reduces_score_independently_of_predicted_mos():
     }
     clean = engine.compute(
         {**common, "noise": 8.0},
-        category="Landscape",
+        category="Landscape Photography",
         pipeline="hybrid",
         only_provided_inputs=True,
     )
     noisy = engine.compute(
         {**common, "noise": 95.0},
-        category="Landscape",
+        category="Landscape Photography",
         pipeline="hybrid",
         only_provided_inputs=True,
     )
@@ -459,9 +582,9 @@ def test_non_portrait_composition_ignores_face_boxes():
     cv2.rectangle(image, (75, 35), (165, 130), (255, 255, 255), -1)
     false_face = [{"x": 0, "y": 0, "w": 20, "h": 20}]
 
-    landscape = estimate_composition(image, faces=false_face, category="Landscape")
+    landscape = estimate_composition(image, faces=false_face, category="Landscape Photography")
     general = estimate_composition(image, faces=false_face, category="General Photography")
-    portrait = estimate_composition(image, faces=false_face, category="Portrait")
+    portrait = estimate_composition(image, faces=false_face, category="Portrait Photography")
 
     assert landscape["subject_type"] == "Visual Saliency Centroid"
     assert general["subject_type"] == "Visual Saliency Centroid"
@@ -470,7 +593,12 @@ def test_non_portrait_composition_ignores_face_boxes():
 
 
 @pytest.mark.parametrize(
-    "category", ["General Photography", "Landscape", "Document"]
+    "category",
+    [
+        "Item Photography",
+        "Landscape Photography",
+        "General Photography",
+    ],
 )
 def test_non_human_categories_skip_face_detection_and_report_not_assessed(
     category, monkeypatch
@@ -505,6 +633,15 @@ def test_non_human_categories_skip_face_detection_and_report_not_assessed(
     assert "noise" in result["fuzzy"]["input_values"]
     assert "face_visibility" not in result["fuzzy"]["input_values"]
     assert result["features"]["face_visibility"]["applicable_to_quality"] is False
+    if category == "Item Photography":
+        assert result["features"]["object_visibility"]["applicable_to_quality"] is True
+        assert "object_visibility" in result["fuzzy"]["input_values"]
+        if result["features"]["object_visibility"]["object_detected"]:
+            assert result["features"]["blur"]["object_sharpness"] is not None
+            assert result["features"]["blur"]["raw_stat"].startswith("Object:")
+    else:
+        assert result["features"]["object_visibility"]["applicable_to_quality"] is False
+        assert "object_visibility" not in result["fuzzy"]["input_values"]
     assert result["features"]["face_visibility"]["face_count"] == 0
     assert result["features"]["face_visibility"]["raw_stat"] == f"Not assessed ({category})"
     assert result["features"]["composition"]["subject_type"] != "Detected Face"
@@ -541,13 +678,14 @@ def test_portrait_category_runs_face_detection(monkeypatch):
     assert success
 
     result = service.analyze_image_file(
-        encoded.tobytes(), "portrait.jpg", category="Portrait"
+        encoded.tobytes(), "portrait.jpg", category="Portrait Photography"
     )
 
     assert calls == [True]
     assert result["features"]["face_visibility"]["face_count"] == 1
     assert result["features"]["face_visibility"]["raw_stat"] == "Faces detected: 1"
     assert result["features"]["face_visibility"]["applicable_to_quality"] is True
+    assert len(result["features"]["blur"]["face_sharpnesses"]) == 1
     assert result["fuzzy"]["input_values"]["brightness"] == result["features"]["brightness"]["value"]
     assert result["fuzzy"]["input_values"]["contrast"] == result["features"]["contrast"]["value"]
     assert "face_visibility" in result["fuzzy"]["input_values"]
@@ -574,6 +712,15 @@ def test_api_response_shape_and_invalid_image_handling(monkeypatch, tmp_path):
         data={"category": "General Photography"},
     )
     assert response.status_code == 400
+
+    validation_service = AnalysisService(model_path=tmp_path / "missing.joblib")
+    monkeypatch.setattr(app_module, "service", validation_service)
+    response = client.post(
+        "/api/simulate",
+        json={"inputs": {}, "category": "Unsupported"},
+    )
+    assert response.status_code == 400
+    assert "Unsupported photography category" in response.json()["detail"]
 
     unavailable_service = AnalysisService(model_path=str(tmp_path / "missing.joblib"))
     monkeypatch.setattr(app_module, "service", unavailable_service)

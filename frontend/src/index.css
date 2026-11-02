@@ -797,9 +797,24 @@ code, pre, .mono {
 }
 
 .category-option-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   font-weight: 500;
   font-size: 0.9rem;
   color: var(--text-primary);
+}
+
+.category-option-label small {
+  font-size: 0.76rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.results-category-explanation {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
 }
 
 .category-option-row.selected .category-option-label {

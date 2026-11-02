@@ -84,11 +84,10 @@ export default function HistoryPage({ history = [], onSelectRecord, onRefreshHis
               className="form-select"
             >
               <option value="All">All Categories</option>
+              <option value="Portrait Photography">Portrait Photography</option>
+              <option value="Item Photography">Item Photography</option>
+              <option value="Landscape Photography">Landscape Photography</option>
               <option value="General Photography">General Photography</option>
-              <option value="Portrait">Portrait</option>
-              <option value="Group Photograph">Group Photograph</option>
-              <option value="Landscape">Landscape</option>
-              <option value="Document">Document</option>
             </select>
           </div>
 

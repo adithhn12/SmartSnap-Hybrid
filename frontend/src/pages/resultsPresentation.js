@@ -22,6 +22,7 @@ const metricDefinitions = {
   contrast: { label: 'Image Contrast', terms: { Low: 'Poor', Medium: 'Good', High: 'Fair' } },
   noise: { label: 'Image Grain', terms: { Low: 'Good', Medium: 'Fair', High: 'Poor' } },
   face_visibility: { label: 'Face Detection / Face Visibility', terms: { Poor: 'Poor', Acceptable: 'Fair', Clear: 'Good' } },
+  object_visibility: { label: 'Primary Object Visibility', terms: { Poor: 'Poor', Acceptable: 'Fair', Clear: 'Good' } },
   composition: { label: 'Framing', terms: { Poor: 'Poor', Average: 'Fair', Good: 'Good' } },
 };
 
@@ -61,10 +62,16 @@ function fallbackStatus(key, item, category) {
     if (description.includes('good')) return 'Good';
   }
   if (key === 'face_visibility') {
-    if (!['portrait', 'group photograph'].includes(category.toLowerCase())) return 'Not assessed';
+    if (category.toLowerCase() !== 'portrait photography') return 'Not assessed';
     if (description.startsWith('poor')) return 'Poor';
     if (description.startsWith('acceptable')) return 'Fair';
     if (description.startsWith('clear')) return 'Good';
+  }
+  if (key === 'object_visibility') {
+    if (description.includes('not assessed') || item?.object_detected === false) return 'Not assessed';
+    if (description.includes('unclear') || description.includes('clipped')) return 'Poor';
+    if (description.includes('partly') || description.includes('weakly')) return 'Fair';
+    if (description.includes('distinct') || description.includes('clearly')) return 'Good';
   }
   return 'Fair';
 }
@@ -136,7 +143,7 @@ function metricExplanation(key, item, status, category) {
     return 'The image looks clean, with little visible grain.';
   }
   if (key === 'face_visibility') {
-    if (!['portrait', 'group photograph'].includes(category.toLowerCase())) {
+    if (category.toLowerCase() !== 'portrait photography') {
       return `Face detection is not used for ${category || 'this category'} and does not affect its assessment.`;
     }
     const count = Number(item?.face_count) || 0;
@@ -146,15 +153,20 @@ function metricExplanation(key, item, status, category) {
     if (status === 'Fair') return `${count} ${noun} detected; visibility is acceptable but could be clearer.`;
     return `${count} ${noun} detected with clear facial detail.`;
   }
+  if (key === 'object_visibility') {
+    if (item?.object_detected === false) {
+      return 'The foreground boundary was uncertain, so object visibility was left neutral rather than treated as a defect.';
+    }
+    if (status === 'Poor') return 'The primary object may be clipped or difficult to distinguish from its surroundings.';
+    if (status === 'Fair') return 'The item is visible, though its framing or separation from the background could improve.';
+    return 'A distinct primary object region is visible with comfortable framing.';
+  }
   if (key === 'composition') {
     if (status === 'Poor') return 'The main visual area may be too close to an edge or awkwardly framed.';
     if (status === 'Fair') return 'The framing is acceptable, with some room to improve balance.';
-    if (category.toLowerCase() === 'document') {
-      return item?.subject_type === 'Detected document page'
-        ? 'The page is clearly located within the frame.'
-        : 'Page edges were not clear enough to assess the framing.';
-    }
-    if (category.toLowerCase() === 'landscape') return 'The scene is framed with a balanced distribution of visual detail.';
+    if (category.toLowerCase() === 'landscape photography') return 'The scene is framed with a balanced distribution of visual detail.';
+    if (category.toLowerCase() === 'item photography') return 'The primary item has room around its detected frame.';
+    if (category.toLowerCase() === 'portrait photography') return 'The portrait subject has balanced placement and safe framing.';
     return 'The image is framed with a balanced placement of its main visual area.';
   }
   return status === 'Good' ? 'This part of the image looks good.' : 'This part of the image may benefit from attention.';
@@ -170,14 +182,19 @@ export function getRecommendationPresentation(recommendation) {
 
 export function buildMetricPresentations(features = {}, memberships = {}, category = 'General Photography') {
   const categoryName = category || 'General Photography';
+  const categoryKey = categoryName.toLowerCase();
   return Object.entries(metricDefinitions)
-    .filter(([key]) => features[key])
+    .filter(([key]) => {
+      if (!features[key]) return false;
+      if (key === 'face_visibility') return categoryKey === 'portrait photography';
+      if (key === 'object_visibility') return categoryKey === 'item photography';
+      return true;
+    })
     .map(([key, definition]) => {
       const item = features[key];
-      const humanCategory = ['portrait', 'group photograph'].includes(categoryName.toLowerCase());
       const notAssessed =
-        (key === 'face_visibility' && (!humanCategory || item.applicable_to_quality === false)) ||
-        (key === 'composition' && item.subject_type === 'Document page not detected');
+        (key === 'face_visibility' && item.applicable_to_quality === false) ||
+        (key === 'object_visibility' && (item.applicable_to_quality === false || item.object_detected === false));
       const activeTerm = strongestTerm(memberships[key]);
       const status = notAssessed
         ? 'Not assessed'
@@ -187,8 +204,8 @@ export function buildMetricPresentations(features = {}, memberships = {}, catego
         label: definition.label,
         status,
         statusClass: statusClass(status),
-        explanation: notAssessed && key === 'composition'
-          ? 'Page edges were not clear enough to assess the document framing.'
+        explanation: notAssessed && key === 'object_visibility'
+          ? 'The foreground boundary was uncertain, so object visibility was left neutral rather than treated as a defect.'
           : metricExplanation(key, { ...item, memberships: memberships[key] ?? {} }, status, categoryName),
         item: { ...item, memberships: memberships[key] ?? {} },
         notAssessed,
@@ -226,6 +243,9 @@ export function buildPersonalizedFeedback(metrics, recommendation = 'KEEP') {
   }
   if (byKey.face_visibility?.status === 'Poor') {
     add('face_visibility', 'Face detail is limited', 'For a portrait, move closer and focus on the person’s face.');
+  }
+  if (byKey.object_visibility?.status === 'Poor') {
+    add('object_visibility', 'The item is hard to distinguish', 'Separate the item from nearby clutter and keep its edges inside the frame.');
   }
 
   if (feedback.length > 0) return feedback.slice(0, 3);
